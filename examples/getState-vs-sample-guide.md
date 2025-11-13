@@ -362,16 +362,21 @@ sample({
 - `priority-example-2.js` - Store + Effect через sample
 - `priority-example-3-complex.js` - Все приоритеты
 - `priority-example-4-getState-vs-sample.js` - Проблемы с getState
-- `priority-example-5-real-race-condition.js` - Критические баги с getState
+- `priority-example-6-incorrect-getState.js` - ❌ Некорректное использование getState
+- `priority-example-7-correct-sample.js` - ✅ Корректное использование sample
 - `priority-cheatsheet.md` - Шпаргалка по приоритетам
+- `getState-vs-sample-guide.md` - Полное руководство
 
 ### Запуск примеров:
 
 ```bash
-# Критические race conditions
-node examples/priority-example-5-real-race-condition.js
+# ❌ Некорректный пример с getState (критические баги)
+node examples/priority-example-6-incorrect-getState.js
 
-# Сравнение getState vs sample
+# ✅ Корректный пример с sample (решение проблем)
+node examples/priority-example-7-correct-sample.js
+
+# Сравнение обоих подходов
 node examples/priority-example-4-getState-vs-sample.js
 ```
 
