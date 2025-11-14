@@ -11,6 +11,10 @@
 ```javascript
 const $balance = createStore(1000)
 const transfer = createEvent()
+const deductBalance = createEvent()
+
+// Обновляем баланс через событие
+$balance.on(deductBalance, (balance, amount) => balance - amount)
 
 // ❌ ОПАСНО
 const transferFx = createEffect(async (amount) => {
@@ -18,7 +22,7 @@ const transferFx = createEffect(async (amount) => {
 
   if (balance >= amount) {
     await sendToServer(amount)
-    $balance.setState(balance - amount)
+    deductBalance(amount) // Списываем деньги
   }
 })
 
