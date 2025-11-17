@@ -1,68 +1,73 @@
 const {createStore, createEvent, createEffect, sample} = require('../npm/effector/effector.cjs.js')
 
-console.log('✅ CORRECT: sample() for state passing\n')
+console.log('✅ CORRECT: sample for quota check\n')
 
-const $balance = createStore(1000)
-const requestTransfer = createEvent()
-const approveTransfer = createEvent()
-const rejectTransfer = createEvent()
+const DAILY_LIMIT = 10
 
-$balance.on(approveTransfer, (balance, amount) => balance - amount)
+const $requestCount = createStore(0)
+const requestApiCall = createEvent()
+const approveRequest = createEvent()
+const rejectRequest = createEvent()
 
-const validateTransferFx = createEffect(async ({amount, to, balance}) => {
-  console.log(`[${to}] Balance check: ${balance}₽`)
+$requestCount.on(approveRequest, count => count + 1)
 
-  if (balance < amount) {
-    return {approved: false, to, amount}
+const validateQuotaFx = createEffect(({endpoint, currentCount}) => {
+  console.log(`[${endpoint}] Checking quota: ${currentCount}/${DAILY_LIMIT}`)
+
+  if (currentCount >= DAILY_LIMIT) {
+    return {approved: false, endpoint}
   }
 
-  await new Promise(resolve => setTimeout(resolve, 30))
+  return {approved: true, endpoint}
+})
 
-  return {approved: true, to, amount}
+const executeRequestFx = createEffect(async ({endpoint}) => {
+  await new Promise(resolve => setTimeout(resolve, 20))
+  return {endpoint}
 })
 
 sample({
-  clock: requestTransfer,
-  source: $balance,
-  fn: (balance, {amount, to}) => ({balance, amount, to}),
-  target: validateTransferFx
+  clock: requestApiCall,
+  source: $requestCount,
+  fn: (currentCount, {endpoint}) => ({endpoint, currentCount}),
+  target: validateQuotaFx
 })
 
 sample({
-  clock: validateTransferFx.doneData,
+  clock: validateQuotaFx.doneData,
   filter: ({approved}) => approved,
-  fn: ({amount}) => amount,
-  target: approveTransfer
+  fn: ({endpoint}) => ({endpoint}),
+  target: [approveRequest, executeRequestFx]
 })
 
 sample({
-  clock: validateTransferFx.doneData,
+  clock: validateQuotaFx.doneData,
   filter: ({approved}) => !approved,
-  target: rejectTransfer
+  target: rejectRequest
 })
 
 sample({
-  clock: approveTransfer,
-  fn: (amount) => `Approved ${amount}₽`
+  clock: executeRequestFx.done,
+  source: $requestCount,
+  fn: (count, {params}) => `[${params.endpoint}] Executed, total: ${count}`
 }).watch(console.log)
 
 sample({
-  clock: rejectTransfer,
-  fn: ({to}) => `Rejected: ${to}`
+  clock: rejectRequest,
+  fn: ({endpoint}) => `[${endpoint}] Rejected`
 }).watch(console.log)
 
-console.log(`Initial balance: ${$balance.getState()}₽`)
-console.log('Executing two 600₽ transfers...\n')
+console.log('Sending 12 parallel requests (limit is 10)...\n')
 
-requestTransfer({amount: 600, to: 'Alice'})
+Array.from({length: 12}, (_, i) =>
+  requestApiCall({endpoint: `/api/resource/${i + 1}`})
+)
 
 setTimeout(() => {
-  requestTransfer({amount: 600, to: 'Bob'})
+  const total = $requestCount.getState()
+  const exceeded = total > DAILY_LIMIT
 
-  setTimeout(() => {
-    const final = $balance.getState()
-
-    console.log(`\nFinal balance: ${final}₽`)
-    console.log(final === 400 ? '✅ OK' : '💥 ERROR')
-  }, 100)
-}, 50)
+  console.log(`\nTotal requests executed: ${total}`)
+  console.log(`Limit: ${DAILY_LIMIT}`)
+  console.log(exceeded ? `💥 QUOTA EXCEEDED by ${total - DAILY_LIMIT}` : '✅ OK')
+}, 300)

@@ -1,42 +1,51 @@
-const {createStore, createEvent, createEffect} = require('../npm/effector/effector.cjs.js')
+const {createStore, createEvent, createEffect, sample} = require('../npm/effector/effector.cjs.js')
 
-console.log('❌ INCORRECT: getState() in effect\n')
+console.log('❌ INCORRECT: getState for quota check\n')
 
-const $balance = createStore(1000)
-const transfer = createEvent()
-const deductBalance = createEvent()
+const DAILY_LIMIT = 10
 
-$balance.on(deductBalance, (balance, amount) => balance - amount)
+const $requestCount = createStore(0)
+const makeApiRequest = createEvent()
+const incrementCount = createEvent()
 
-const transferFx = createEffect(async ({amount, to}) => {
-  const balance = $balance.getState()
+$requestCount.on(incrementCount, count => count + 1)
 
-  console.log(`[${to}] Balance check: ${balance}₽`)
+const apiRequestFx = createEffect(async ({endpoint}) => {
+  const currentCount = $requestCount.getState()
 
-  if (balance < amount) {
-    throw new Error('Insufficient funds')
+  console.log(`[${endpoint}] Checking quota: ${currentCount}/${DAILY_LIMIT}`)
+
+  if (currentCount >= DAILY_LIMIT) {
+    throw new Error('Quota exceeded')
   }
 
-  await new Promise(resolve => setTimeout(resolve, 30))
+  await new Promise(resolve => setTimeout(resolve, 20))
 
-  deductBalance(amount)
+  incrementCount()
 
-  console.log(`[${to}] Transferred ${amount}₽, new balance: ${$balance.getState()}₽`)
+  console.log(`[${endpoint}] Request completed, count: ${$requestCount.getState()}`)
+
+  return {endpoint, success: true}
 })
 
-transfer.watch(payload => transferFx(payload))
+sample({
+  clock: makeApiRequest,
+  target: apiRequestFx
+})
 
-console.log(`Initial balance: ${$balance.getState()}₽`)
-console.log('Executing two 600₽ transfers simultaneously...\n')
+console.log('Sending 12 parallel requests (limit is 10)...\n')
 
-Promise.allSettled([
-  transfer({amount: 600, to: 'Alice'}),
-  transfer({amount: 600, to: 'Bob'})
-]).then(() => {
+const requests = Array.from({length: 12}, (_, i) =>
+  makeApiRequest({endpoint: `/api/resource/${i + 1}`})
+)
+
+Promise.allSettled(requests).then(() => {
   setTimeout(() => {
-    const final = $balance.getState()
+    const total = $requestCount.getState()
+    const exceeded = total > DAILY_LIMIT
 
-    console.log(`\nFinal balance: ${final}₽`)
-    console.log(final < 0 ? '💥 OVERDRAFT!' : '✅ OK')
+    console.log(`\nTotal requests executed: ${total}`)
+    console.log(`Limit: ${DAILY_LIMIT}`)
+    console.log(exceeded ? `💥 QUOTA EXCEEDED by ${total - DAILY_LIMIT}` : '✅ OK')
   }, 100)
 })
